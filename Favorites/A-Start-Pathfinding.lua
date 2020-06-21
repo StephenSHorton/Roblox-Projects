@@ -1,3 +1,4 @@
+--This script is used in the cell-conquest game
 local PATHFINDING = {}
 function PATHFINDING.findPath(start,finish,plr)--Returns a table of objects as a route to a destination (***Given that the connection between objects are beams***)
 	if start == finish then return nil end
