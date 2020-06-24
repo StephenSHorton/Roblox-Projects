@@ -6,18 +6,30 @@ local Robot = Class:extend()
 local robotModels = game.ServerStorage["Robot Models"]
 
 local VALUE_TABLE = {
-	["Laser Cannon"] = {20,30,40},
-	["Electric Bolt"] = {5,5,5},
-	["Microwave"] = {12,17,25},
-	["Gunner"] = {3,4,5},
-	["Tank"] = {6,9,12},
-	["Laser"] = {10,15,20},
-	["Repair"] = {0.50,0.65,0.80}
+	Damage_Values = {
+		["LaserCannon"] = {20,30,40},
+		["ElectricBolt"] = {5,5,5},
+		["Microwave"] = {12,17,25},
+		["Gunner"] = {3,4,5},
+		["TankBot"] = {6,9,12},
+		["LaserBot"] = {10,15,20},
+	},
+	Health_Values = {
+		["Repair"] = {0.50,0.65,0.80},
+		["GunnerBot"] = {28,34,42},
+		["TankBot"] = {40,50,60},
+		["LaserBot"] = {28,34,42},
+		["Barrier"] = {25,35,45}
+	}
 }
 
 function getTargetHumanoid(target)
 	local t = target.Main.Humanoid
-	if target.LaserBot then
+	if target.Barrier then print("TRUE") else print("FALSE") end
+	if target.Barrier then
+		print("Firing upon barrier")
+		t = target.Barrier.Humanoid
+	elseif target.LaserBot then
 		t = target.LaserBot.Humanoid
 	elseif target.GunnerBot then
 		t = target.GunnerBot.Humanoid
@@ -29,7 +41,7 @@ end
 
 function damage(weapon,level,humanoid,modifier)
 	local t = humanoid
-	local d = VALUE_TABLE[weapon][level]
+	local d = VALUE_TABLE.Damage_Values[weapon][level]
 	if modifier then
 		d = d*modifier
 	end
@@ -56,11 +68,11 @@ function onBotDeath(bot)
 	bot:Destroy()
 end
 
-function repairEffect(bot)
+function repairEffect(part)
 	local repairSound = Instance.new("Sound")
 	repairSound.SoundId = "rbxassetid://2349519342"
 	repairSound.Volume = 1
-	repairSound.Parent = bot.PrimaryPart
+	repairSound.Parent = part
 	repairSound.Ended:Connect(function()
 		repairSound:Destroy()
 	end)
@@ -72,7 +84,7 @@ function repairEffect(bot)
 		ColorSequenceKeypoint.new(1,Color3.fromRGB(24, 255, 12))
 	})
 	effect.Lifetime = NumberRange.new(1)
-	effect.Parent = bot.PrimaryPart
+	effect.Parent = part
 	repairSound:Play()
 	wait(3)
 	effect.Enabled = false
@@ -93,6 +105,8 @@ function Robot:new(owner,pos,playerSlot)
 	self.TankBot = nil
 	self.LaserBot = nil
 	
+	self.Barrier = nil
+	
 	self.Main = robotModels:FindFirstChild("Main"):Clone()
 	self.Main:SetPrimaryPartCFrame(CFrame.new(pos or Vector3.new()))
 	self.Main.Eye.Color = self.Color
@@ -109,12 +123,12 @@ function Robot:setCFrame(cf)
 	self.Main:SetPrimaryPartCFrame(cf)
 end
 
-function Robot:fireWeapon(roll,target)
+function Robot:fireWeapon(roll,target)------------------------PRIMARY WEAPONS
 	for weapon,level in pairs(roll) do
 		wait(1)
 		local t = getTargetHumanoid(target).Parent
 		if level > 0 then
-			if weapon == "Laser Cannon" then
+			if weapon == "LaserCannon" then
 				local laserSound = Instance.new("Sound")
 				laserSound.SoundId = "rbxassetid://201858072"
 				laserSound.Parent = self.Main.PrimaryPart
@@ -164,7 +178,7 @@ function Robot:fireWeapon(roll,target)
 				microwaveSound:Play()
 				beam.Parent = self.Main.Body
 				beam.Attachment0 = self.Main.Eye.Attachment
-				beam.Attachment1 = t.Body.Attachment 
+				beam.Attachment1 = t:FindFirstChild("Body") and t.Body.Attachment or t:FindFirstChild("Head"):FindFirstChild("Attachment") -- for barrier
 				wait(2)
 				local possibleTargets = {
 					target.Main
@@ -187,7 +201,7 @@ function Robot:fireWeapon(roll,target)
 				explosionSound:Play()
 				Debris:AddItem(explosion,2)
 				beam:Destroy()
-			elseif weapon == "Electric Bolt" then --------------------------------------------------TODO: Cause electic bolt to hit random targets, and only the same on if there is only one.
+			elseif weapon == "ElectricBolt" then --------------------------------------------------TODO: Cause electic bolt to hit random targets, and only the same on if there is only one.
 				local possibleTargets = {
 					target.Main
 				}
@@ -212,7 +226,7 @@ function Robot:fireWeapon(roll,target)
 					part.Anchored = true
 					part.CanCollide = false
 					part.Size = Vector3.new(1,1,2)
-					part.CFrame = CFrame.new(self.Main.Eye.Position,randomT.PrimaryPart.Position)
+					part.CFrame = CFrame.new(self.Main.Eye.Position,target.Barrier and target.Barrier.PrimaryPart.Position or randomT.PrimaryPart.Position)
 					local tweenInfo = TweenInfo.new(
 						0.75, -- Time
 						Enum.EasingStyle.Linear, -- EasingStyle
@@ -221,7 +235,7 @@ function Robot:fireWeapon(roll,target)
 						false, -- Reverses (tween will reverse once reaching it's goal)
 						0 -- DelayTime
 					)
-					local tween = TweenService:Create(part, tweenInfo, { Position = randomT.PrimaryPart.Position })
+					local tween = TweenService:Create(part, tweenInfo, { Position = target.Barrier and target.Barrier.PrimaryPart.Position or randomT.PrimaryPart.Position })
 					local disabledEffect = Instance.new("ParticleEmitter")
 					disabledEffect.Rate = 8
 					disabledEffect.Size = NumberSequence.new{
@@ -241,9 +255,11 @@ function Robot:fireWeapon(roll,target)
 					boltSound:Play()
 					tween:Play()
 					tween.Completed:Wait()
-					if randomT ~= target.Main then randomT:FindFirstChild("Disabled").Value = true end
-					disabledEffect.Parent = randomT.PrimaryPart
-					damage(weapon,level,randomT.Humanoid)
+					if randomT ~= target.Main and target.Barrier == nil then randomT:FindFirstChild("Disabled").Value = true end
+					if target.Barrier == nil and randomT ~= target.Main then
+						disabledEffect.Parent = randomT.PrimaryPart
+					end
+					damage(weapon,level,target.Barrier and target.Barrier.Humanoid or randomT.Humanoid)
 					if #possibleTargets > 2 then
 						table.remove(possibleTargets,table.find(possibleTargets,randomT))
 					end
@@ -255,13 +271,78 @@ function Robot:fireWeapon(roll,target)
 	end
 end
 
-function Robot:fireUtility(roll,target)
+function Robot:fireUtility(roll,target)------------------------UTILITIES
 	for utility,level in pairs(roll) do
 		wait(1)
 		if level > 0 then
 			if utility == "Barrier" then
-				print("SETTING UP BARRIER LEVEL X" .. level)
-				wait(2)
+				if self.Barrier then
+					self.Barrier.Humanoid.Health += self.Barrier.Humanoid.Health*VALUE_TABLE.Health_Values["Repair"][level]
+					repairEffect(self.Barrier.Head)
+				else
+					self.Barrier = self.Main:FindFirstChild("Barrier")
+					local barrier = self.Barrier:FindFirstChild("Barrier")
+					local barrierHead = barrier.Parent.Head
+					local barrierHumanoid = barrier.Parent.Humanoid
+					barrierHumanoid.MaxHealth = VALUE_TABLE.Health_Values[utility][level]
+					barrierHumanoid.Health = VALUE_TABLE.Health_Values[utility][level]
+					local origSize = barrier.Size
+					local origCFrame = barrier.CFrame
+					barrier.CFrame = barrier.CFrame - self.Main.PrimaryPart.CFrame.LookVector*4
+					barrier.Size = Vector3.new(1,1,1)
+					local tweenInfo1 = TweenInfo.new(
+						1, -- Time
+						Enum.EasingStyle.Linear, -- EasingStyle
+						Enum.EasingDirection.Out, -- EasingDirection
+						0, -- RepeatCount (when less than zero the tween will loop indefinitely)
+						false, -- Reverses (tween will reverse once reaching it's goal)
+						0 -- DelayTime
+					)
+					local tweenInfo2 = TweenInfo.new(
+						1, -- Time
+						Enum.EasingStyle.Linear, -- EasingStyle
+						Enum.EasingDirection.Out, -- EasingDirection
+						-1, -- RepeatCount (when less than zero the tween will loop indefinitely)
+						true, -- Reverses (tween will reverse once reaching it's goal)
+						0 -- DelayTime
+					)
+					local deathInfo = TweenInfo.new(
+						1, -- Time
+						Enum.EasingStyle.Linear, -- EasingStyle
+						Enum.EasingDirection.Out, -- EasingDirection
+						0, -- RepeatCount (when less than zero the tween will loop indefinitely)
+						false, -- Reverses (tween will reverse once reaching it's goal)
+						0 -- DelayTime
+					)
+					local tween1 = TweenService:Create(barrier, tweenInfo1, {
+						Transparency = 0.2,
+						Size = origSize,
+						CFrame = origCFrame
+					})
+					local tween2 = TweenService:Create(barrier, tweenInfo2, { Transparency = 0.6 })
+					local deathTween = TweenService:Create(barrier, tweenInfo1, {
+						Transparency = 1,
+						Size = Vector3.new(1,1,1),
+						CFrame = barrier.CFrame - self.Main.PrimaryPart.CFrame.LookVector*4
+					})
+					tween1:Play()
+					barrier:FindFirstChild("Sound"):Play()
+					tween1.Completed:Wait()
+					barrierHead.Transparency = 0.99
+					tween2:Play()
+					barrierHumanoid.Changed:Connect(function()
+						if barrierHumanoid.Health >= 0 then
+							tween2:Cancel()
+							self.Barrier = nil
+							barrierHead.Transparency = 1
+							deathTween:Play()
+							deathTween.Completed:Wait()
+							barrier.CFrame = origCFrame
+							barrier.Size = origSize
+						end
+					end)
+					wait(2)
+				end
 			elseif utility == "Hack" then
 				print("SETTING UP HACK LEVEL X" .. level)
 				wait(2)
@@ -292,96 +373,66 @@ function Robot:fireBots(target)
 	]]
 end
 
-function Robot:toggleGunnerBot(level)
-	if self.GunnerBot then
-		self.GunnerBot:Destroy()
-		self.GunnerBot = nil
-	else
-		self.GunnerBot = robotModels:FindFirstChild("Gunner"):Clone()
-		self.GunnerBot.Humanoid.Died:Connect(function()
-			local ref = self.GunnerBot
-			self.GunnerBot = nil
-			onBotDeath(ref)
-		end)
-		self.GunnerBot:SetPrimaryPartCFrame(self.Main["Bot CFrames"]["Gun Bot CFrame"].CFrame)
-		self.GunnerBot.Eye.Color = self.Color
-		self.GunnerBot.Parent = self.Main
-	end
+function Robot:addBot(bot,level)
+	local colors = {
+		Color3.fromRGB(85, 255, 34), -- Level 1
+		Color3.fromRGB(0, 85, 255), -- Level 2
+		Color3.fromRGB(200, 0, 255), -- Level 3
+		Color3.fromRGB(255, 158, 23) -- Level 4
+	}
+	self[bot] = robotModels:FindFirstChild(bot):Clone()
+	self[bot]:FindFirstChild("RankGui").Frame.ImageColor3 = colors[level]
+	self[bot]:FindFirstChild("Humanoid").MaxHealth = VALUE_TABLE.Health_Values[bot][level]
+	self[bot]:FindFirstChild("Humanoid").Health = VALUE_TABLE.Health_Values[bot][level]
+	self[bot].Humanoid.Died:Connect(function()
+		local ref = self[bot]
+		self[bot] = nil
+		onBotDeath(ref)
+	end)
+	self[bot]:SetPrimaryPartCFrame(self.Main["Bot CFrames"][self[bot].Name].CFrame)
+	self[bot].Eye.Color = self.Color
+	self[bot].Parent = self.Main
 end
 
-function Robot:toggleTankBot(level)
-	if self.TankBot then
-		self.TankBot:Destroy()
-		self.TankBot = nil
-	else
-		self.TankBot = robotModels:FindFirstChild("Tank"):Clone()
-		self.TankBot.Humanoid.Died:Connect(function()
-			local ref = self.TankBot
-			self.TankBot = nil
-			onBotDeath(ref)
-		end)
-		self.TankBot:SetPrimaryPartCFrame(self.Main["Bot CFrames"]["Tank Bot CFrame"].CFrame)
-		self.TankBot.Eye.Color = self.Color
-		self.TankBot.Parent = self.Main
-	end
-end
-
-function Robot:toggleLaserBot(level)
-	if self.LaserBot then
-		self.LaserBot:Destroy()
-		self.LaserBot = nil
-	else
-		self.LaserBot = robotModels:FindFirstChild("Laser"):Clone()
-		self.LaserBot.Humanoid.Died:Connect(function()
-			local ref = self.LaserBot
-			self.LaserBot = nil
-			onBotDeath(ref)
-		end)
-		self.LaserBot:SetPrimaryPartCFrame(self.Main["Bot CFrames"]["Laser Bot CFrame"].CFrame)
-		self.LaserBot.Eye.Color = self.Color
-		self.LaserBot.Parent = self.Main
-	end
-end
-
-function Robot:toggleBots(roll)--------------------------------TODO: add ranks, and upgrade functionality
+function Robot:toggleBots(roll)------------------------BOTS
 	for bot,level in pairs(roll) do
 		wait(1)
 		if level > 0 then
-			if bot == "Gunner" then
+			if bot == "GunnerBot" then
 				if self.GunnerBot then
 					spawn(function()
 						self.GunnerBot:FindFirstChild("Disabled").Value = false
 						local dEffect = self.GunnerBot.PrimaryPart:FindFirstChild("_DisabledEffect")
 						if dEffect then dEffect:Destroy() end
-						repairEffect(self.GunnerBot)
+						repairEffect(self.GunnerBot.PrimaryPart)
 					end)
-					self.GunnerBot.Humanoid.Health += self.GunnerBot.Humanoid.Health*VALUE_TABLE["Repair"][level]
+					self.GunnerBot.Humanoid.Health += self.GunnerBot.Humanoid.MaxHealth*VALUE_TABLE.Health_Values["Repair"][level]
 				else
-					self:toggleGunnerBot()
+					self:addBot("GunnerBot",level)
 				end
-			elseif bot == "Laser" then
+			elseif bot == "LaserBot" then
 				if self.LaserBot then
 					spawn(function()
 						self.LaserBot:FindFirstChild("Disabled").Value = false
 						local dEffect = self.LaserBot.PrimaryPart:FindFirstChild("_DisabledEffect")
 						if dEffect then dEffect:Destroy() end
-						repairEffect(self.LaserBot)
+						repairEffect(self.LaserBot.PrimaryPart)
 					end)
-					self.LaserBot.Humanoid.Health += self.LaserBot.Humanoid.Health*VALUE_TABLE["Repair"][level]
+					self.LaserBot.Humanoid.Health += self.LaserBot.Humanoid.MaxHealth*VALUE_TABLE.Health_Values["Repair"][level]
 				else
-					self:toggleLaserBot()
+					self:addBot("LaserBot",level)
 				end
-			elseif bot == "Tank" then
+			elseif bot == "TankBot" then
 				if self.TankBot then
 					spawn(function()
 						self.TankBot:FindFirstChild("Disabled").Value = false
 						local dEffect = self.TankBot.PrimaryPart:FindFirstChild("_DisabledEffect")
 						if dEffect then dEffect:Destroy() end
-						repairEffect(self.TankBot)
+						repairEffect(self.TankBot.PrimaryPart)
 					end)
-					self.TankBot.Humanoid.Health += self.TankBot.Humanoid.Health*VALUE_TABLE["Repair"][level]
+					self.TankBot.Humanoid.Health += self.TankBot.Humanoid.MaxHealth*VALUE_TABLE.Health_Values["Repair"][level]
 				else
-					self:toggleTankBot()
+					self:addBot("TankBot",level)
 				end
 			end
 		end
